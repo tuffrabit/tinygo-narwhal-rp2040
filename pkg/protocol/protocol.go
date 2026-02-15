@@ -36,6 +36,7 @@ const (
 	CmdPing            = 0x08
 	CmdFactoryReset    = 0x09
 	CmdGetVersion      = 0x10
+	CmdDiscover        = 0x7F
 
 	// Response status codes (Device → PC)
 	StatusOK              = 0x00
@@ -217,6 +218,8 @@ func (h *Handler) Handle(frame *Frame) *Response {
 		return h.handleFactoryReset()
 	case CmdGetVersion:
 		return h.handleGetVersion()
+	case CmdDiscover:
+		return h.handleDiscover()
 	default:
 		return &Response{Status: StatusInvalidCmd}
 	}
@@ -406,6 +409,15 @@ func (h *Handler) handleGetVersion() *Response {
 	return &Response{
 		Status:  StatusOK,
 		Payload: payload,
+	}
+}
+
+// handleDiscover returns device identifier for PC app enumeration.
+// Response: ["tuffpad"] (7 bytes)
+func (h *Handler) handleDiscover() *Response {
+	return &Response{
+		Status:  StatusOK,
+		Payload: []byte("tuffpad"),
 	}
 }
 

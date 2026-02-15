@@ -449,3 +449,24 @@ func TestNotFound(t *testing.T) {
 		t.Errorf("Expected StatusNotFound, got 0x%x", resp.Status)
 	}
 }
+
+func TestDiscoverCommand(t *testing.T) {
+	handler, mgr := newTestHandler(t)
+	defer mgr.Close()
+
+	frame := &Frame{
+		Cmd:     CmdDiscover,
+		Payload: nil,
+	}
+
+	resp := handler.Handle(frame)
+	if resp.Status != StatusOK {
+		t.Fatalf("CmdDiscover failed: status 0x%x", resp.Status)
+	}
+
+	// Verify response is "tuffpad"
+	expected := "tuffpad"
+	if string(resp.Payload) != expected {
+		t.Errorf("Expected payload '%s', got '%s'", expected, string(resp.Payload))
+	}
+}
