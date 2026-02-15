@@ -1,0 +1,2 @@
+waveshare:
+docker run --rm -v $(pwd):/src -w /src tinygo/tinygo:0.40.1 tinygo build -o /src/waveshare-tuffpad.uf2 -size=short -target=waveshare-rp2040-zero .
