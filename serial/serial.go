@@ -3,6 +3,7 @@ package serial
 import (
 	"io"
 	"machine"
+	"time"
 
 	"github.com/tuffrabit/tinygo-narwhal-rp2040/pkg/protocol"
 )
@@ -21,10 +22,41 @@ func NewSerial(serial machine.Serialer, handler *protocol.Handler) Serial {
 	}
 }
 
+// dtrWaiter is the interface for checking DTR status.
+// machine.USBCDC implements this.
+type dtrWaiter interface {
+	DTR() bool
+}
+
+// waitForDTR blocks until DTR is asserted or timeout.
+// This ensures the host serial port is fully open before we send responses.
+func waitForDTR(serial machine.Serialer, timeout time.Duration) bool {
+	dtrChecker, ok := serial.(dtrWaiter)
+	if !ok {
+		// If we can't check DTR, just proceed
+		return true
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if dtrChecker.DTR() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
 // Handle runs the serial read/write loop.
 // This should be called in its own goroutine.
 func (s *Serial) Handle() {
 	reader := &serialReader{serial: s.serial}
+
+	// Wait for DTR to be asserted before processing commands.
+	// TinyGo's USB CDC drops writes if DTR is not set, which causes
+	// PC apps to receive no response (frame too short: 0 bytes).
+	// We wait up to 2 seconds for the host to open the port properly.
+	waitForDTR(s.serial, 2*time.Second)
 
 	for {
 		// Read and process binary frames
