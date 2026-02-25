@@ -5,21 +5,31 @@ import (
 	"machine"
 	"time"
 
+	"github.com/tuffrabit/tinygo-narwhal-rp2040/pkg/display"
 	"github.com/tuffrabit/tinygo-narwhal-rp2040/pkg/protocol"
 )
 
 // Serial handles USB CDC communication using the binary protocol.
 type Serial struct {
-	serial  machine.Serialer
-	handler *protocol.Handler
+	serial    machine.Serialer
+	handler   *protocol.Handler
+	display   *display.Manager
+	formatter *display.FrameFormatter
 }
 
 // NewSerial creates a new Serial handler.
 func NewSerial(serial machine.Serialer, handler *protocol.Handler) Serial {
 	return Serial{
-		serial:  serial,
-		handler: handler,
+		serial:    serial,
+		handler:   handler,
+		formatter: display.NewFrameFormatter(),
 	}
+}
+
+// SetDisplay sets the display manager for debug output.
+// Call this after NewSerial if you want display output.
+func (s *Serial) SetDisplay(d *display.Manager) {
+	s.display = d
 }
 
 // dtrWaiter is the interface for checking DTR status.
@@ -58,21 +68,44 @@ func (s *Serial) Handle() {
 	// We wait up to 2 seconds for the host to open the port properly.
 	waitForDTR(s.serial, 2*time.Second)
 
+	// After DTR is asserted, wait a bit more for the USB CDC data endpoints
+	// to be fully ready. The host may send data immediately after setting DTR,
+	// but we need time for the USB enumeration to complete on our end.
+	time.Sleep(100 * time.Millisecond)
+
 	for {
 		// Read and process binary frames
 		frame, err := protocol.ReadFrame(reader)
 		if err != nil {
 			// Frame error - sync byte wrong, CRC mismatch, etc.
 			// Continue to next iteration to try reading again
+			if s.display != nil {
+				s.display.ShowError(err.Error())
+			}
 			continue
+		}
+
+		// Update display with incoming frame
+		if s.display != nil {
+			bytesStr, parsedStr := s.formatter.FormatIncoming(frame)
+			s.display.ShowIncomingFrame(bytesStr, parsedStr)
 		}
 
 		// Process the command
 		resp := s.handler.Handle(frame)
 
+		// Update display with outgoing response
+		if s.display != nil {
+			bytesStr, parsedStr := s.formatter.FormatOutgoing(resp)
+			s.display.ShowOutgoingResponse(bytesStr, parsedStr)
+		}
+
 		// Send response
 		if err := protocol.WriteResponse(s.serial, resp); err != nil {
 			// Write error - continue and try to handle next frame
+			if s.display != nil {
+				s.display.ShowError(err.Error())
+			}
 			continue
 		}
 	}
